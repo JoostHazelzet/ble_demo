@@ -1,70 +1,71 @@
-# Getting Started with Create React App
+# BLE demo
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Connect BLE sensors to a web page using the Bluetooth web API.
 
-## Available Scripts
+Sources:
 
-In the project directory, you can run:
+- [https://developer.chrome.com/articles/bluetooth/](https://developer.chrome.com/articles/bluetooth/)
+- [https://github.com/WebBluetoothCG/registries/blob/master/gatt_assigned_services.txt](https://github.com/WebBluetoothCG/registries/blob/master/gatt_assigned_services.txt)
+- [https://github.com/WebBluetoothCG/registries/blob/master/gatt_assigned_characteristics.txt](https://github.com/WebBluetoothCG/registries/blob/master/gatt_assigned_characteristics.txt)
+- [https://www.bluetooth.com/specifications/specs/heart-rate-service-1-0/](https://www.bluetooth.com/specifications/specs/heart-rate-service-1-0/)
+- [https://www.bluetooth.com/specifications/specs/cycling-speed-and-cadence-service-1-0/](https://www.bluetooth.com/specifications/specs/cycling-speed-and-cadence-service-1-0/)
+- [https://www.bluetooth.com/specifications/specs/cycling-power-service-1-1/](https://www.bluetooth.com/specifications/specs/cycling-power-service-1-1/)
 
-### `npm start`
+## `npm start`
 
 Runs the app in the development mode.\
 Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+## BLE devices
 
-### `npm test`
+### Heart rate sensor
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+PrimaryService: heart_rate 0000180D
+Characteristics:
 
-### `npm run build`
+- heart_rate_measurement 00002A37
+- body_sensor_location 00002A38
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+PrimaryService: battery_service 0000180F
+Characteristics:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- battery_level 00002A19
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Kickr
 
-### `npm run eject`
+PrimaryService: cycling_power 00001818
+Characteristics exposed:
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+- sensor_location 00002A5D
+- cycling_power_measurement 00002A63
+- cycling_power_feature 00002A65
+- cycling_power_control_point 00002A66
+- Unknown a026e005-0a7d-4ab3-97fa-f1500f9feb8b
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+PrimaryService: fitness_machine 00001826
+Characteristics exposed:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+- fitness_machine_feature 00002acc
+- indoor_bike_data 00002ad2
+- training_status 00002ad3
+- supported_resistance_level_range 00002ad6
+- supported_power_range 00002ad8
+- fitness_machine_control_point 00002ad9
+- fitness_machine_status 00002ada
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+primaryService: device_information 0000180a
+Characteristics exposed:
 
-## Learn More
+- firmware_revision 00002a26
+- hardware_revision 00002a27
+- manufacturer_name 00002a29
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Cadence
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+PrimaryService: cycling_speed_and_cadence 00001816
+Characteristics:
 
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+- sc_control_point 0x2A55
+- csc_measurement 0x2A5B
+- csc_feature 0x2A5C
+- sensor_location 0x2A5D
