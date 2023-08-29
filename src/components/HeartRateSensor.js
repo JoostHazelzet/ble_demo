@@ -82,6 +82,9 @@ class HeartRateSensor extends React.Component {
     this.setState({ batteryService: null });
   }
 
+  // ////////////////////////////////////////////////////////////////////
+  // Heart Rate Service
+
   handleBodySensorLocationCharacteristic = (characteristic) => {
     if (characteristic === null) {
       console.log("Unknown sensor location.");
@@ -159,6 +162,9 @@ class HeartRateSensor extends React.Component {
     this.setState({ heartRateMeasurement: result });
   }
 
+  // ////////////////////////////////////////////////////////////////////
+  // Battery Service
+
   handleBatteryLevelCharacteristic = (characteristic) => {
     return characteristic.startNotifications()
       .then(char => {
@@ -171,6 +177,9 @@ class HeartRateSensor extends React.Component {
     const characteristic = event.target;
     this.setState({ batteryLevel: { value: characteristic.value.getUint8(0), unit: '%' } });
   }
+
+  // ////////////////////////////////////////////////////////////////////
+  // Render
 
   render() {
     return (

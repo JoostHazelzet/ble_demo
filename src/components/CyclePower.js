@@ -10,8 +10,10 @@ class CyclePower extends React.Component {
     super(props);
     this.state = {
       busyConnecting: false,
-      deviceInformation: null,
       wheelCircumference: { value: 2.125, unit: 'm' },
+
+      deviceInformationService: null,
+
       cyclingPowerService: null,
       sensorLocation: null,
       powerMeasurement: null,
@@ -48,7 +50,6 @@ class CyclePower extends React.Component {
         filters: [{
           services: ['cycling_power'],
         }],
-        // filters: [{ services: [ 0x1818 ] }],
         acceptAllDevices: false,
         optionalServices: ['cycling_power', 'fitness_machine', 'generic_access', 'generic_attribute', 'device_information'],
       }).then(device => {
@@ -104,16 +105,8 @@ class CyclePower extends React.Component {
     this.setState({ cyclingPowerService: null });
   }
 
-  handleSensorLocationCharacteristic = (characteristic) => {
-    if (characteristic === null) {
-      console.log("Unknown sensor location.");
-      return Promise.resolve();
-    }
-    return characteristic.readValue()
-      .then(sensorLocationData => {
-        this.setState({ sensorLocation: sensorLocationLookup(sensorLocationData.getUint8(0)) })
-      })
-  }
+  // ////////////////////////////////////////////////////////////////////
+  // Cycle Power Service
 
   handlePowerMeasurementCharacteristic = (characteristic) => {
     return characteristic.startNotifications()
@@ -199,7 +192,7 @@ class CyclePower extends React.Component {
       }
       result.cumulativeWheelRevolutions = { value: wheelRevolutions, unit: 'revolutions' };
       result.lastWheelEventTime = { value: wheelTime, unit: 's' };
-      result.wheelRpm = { value: wheelRpm, unit: 'rpm'};
+      result.wheelRpm = { value: wheelRpm, unit: 'rpm' };
       result.speedCounter = speedCounter;
       result.distance = distance;
       result.speed = speed;
@@ -234,7 +227,7 @@ class CyclePower extends React.Component {
       result.lastCrankEventTime = { value: crankTime, unit: 's' };
       result.crankCounter = crankCounter;
       result.cadence = { value: cadence, unit: 'rpm' };
-      
+
       index += 4;
     }
 
@@ -314,6 +307,201 @@ class CyclePower extends React.Component {
         }
         this.setState({ powerFeatures: result });
       });
+  }
+
+  handleSensorLocationCharacteristic = (characteristic) => {
+    if (characteristic === null) {
+      console.log("Unknown sensor location.");
+      return Promise.resolve();
+    }
+    return characteristic.readValue()
+      .then(sensorLocationData => {
+        this.setState({ sensorLocation: sensorLocationLookup(sensorLocationData.getUint8(0)) })
+      })
+  }
+
+  // ////////////////////////////////////////////////////////////////////
+  // First Machine Service
+
+  handleIndoorBikeDataCharacteristic = (characteristic) => {
+    return characteristic.startNotifications()
+      .then(char => {
+        characteristic.addEventListener('characteristicvaluechanged',
+          this.onIndoorBikeDataChanged);
+      });
+  }
+
+  onIndoorBikeDataChanged = (event) => {
+    // https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.indoor_bike_data.xml
+    const data = event.target.value;
+    const flags = data.getUint16(0, /*littleEndian=*/true);
+
+    this.setState({ flagsFitsnessMachine: `0b${flags.toString(2).padStart(16, '0')}` });
+    const raw = uint8ArrayToHexString(new Uint8Array(data.buffer.slice(2)).buffer);
+    this.setState({ rawFitnessMachine: raw });
+
+    const fields = [];
+    fields.push(`Speed: (${data.getUint16(2, true)})`);
+    fields.push(`Cadence: (${data.getUint16(4, true)})`);
+    fields.push(` (${data.getUint16(6, true)})`);
+    this.setState({ fieldsFitnessMachine: fields });
+
+    const result = {};
+    let index = 2;
+
+    const moreData = flags & 0x1;
+    // This is a weird flag because if it is zero then instantaneousSpeed is present
+    if (!moreData) {
+      result.instantaneousSpeed = { value: data.getUint16(index, /*littleEndian=*/true) / 100, unit: 'km/h' };
+      index += 2;
+    }
+
+    const averageSpeedPresent = flags & 0x2;
+    if (averageSpeedPresent) {
+      result.averageSpeed = { value: data.getUint16(index, /*littleEndian=*/true) / 100, unit: 'm/s' };
+      index += 2;
+    }
+
+    const instantaneousCadencePresent = flags & 0x4;
+    if (instantaneousCadencePresent) {
+      result.instantaneousCadence = { value: data.getUint16(index, /*littleEndian=*/true) / 20, unit: 'rpm' };
+      index += 2;
+    }
+
+    const averageCadencePresent = flags & 0x8;
+    if (averageCadencePresent) {
+      result.averageCadence = { value: data.getUint16(index, /*littleEndian=*/true) / 20, unit: 'rpm' };
+      index += 2;
+    }
+
+    const totalDistancePresent = flags & 0x10;
+    // This specified as a 24 bit field
+    if (totalDistancePresent) {
+      result.totalDistance = { value: data.getUint32(index, /*littleEndian=*/true) * data.getUint8(index + 2), unit: 'm' };
+      index += 3;
+    }
+
+    const resistanceLevelPresent = flags & 0x20;
+    if (resistanceLevelPresent) {
+      result.resistanceLevel = { value: data.getInt16(index, /*littleEndian=*/true), unit: '%' };
+      index += 2;
+    }
+
+    const instantaneousPowerPresent = flags & 0x40;
+    if (instantaneousPowerPresent) {
+      result.instantaneousPower = { value: data.getInt16(index, /*littleEndian=*/true), unit: 'W' };
+      index += 2;
+    }
+
+    // TODO: remaining fields
+    // Average Power present
+    // Expended Energy present
+    // Heart Rate present
+    // Metabolic Equivalent present
+    // Elapsed Time present
+    // Remaining Time present
+
+    this.setState({ indoorBikeData: result });
+
+  }
+
+  handleFitnessMachineControlPointCharacteristic = (characteristic) => {
+    return characteristic.startNotifications()
+      .then(char => {
+        characteristic.addEventListener('characteristicvaluechanged',
+          this.onFitnessMachineControlPointChanged);
+      });
+  }
+
+  handleFitnessMachineControlRequest = () => {
+    const service = this.state.fitnessMachineService;
+    service.getCharacteristic('fitness_machine_control_point').then(characteristic => {
+      // Each command requires the 'Request control' command to be sent first. 
+      // Next in onFitnessMachineControlPointChanged the actual command stored in this.state.writeTofittnessMachine is sent.
+      characteristic.writeValue(new Uint8Array([0x0]/*Request control=*/)).catch(error => {
+        console.error("handleButtonSetResistance Error during writing fitness_machine_control_point: ", error);
+        this.setState({ writeTofittnessMachine: null });
+      });
+    }
+    ).catch(error => {
+      console.error("handleButtonSetResistance Error during connecting to fitness_machine_control_point: ", error);
+    });
+  }
+
+  onFitnessMachineControlPointChanged = (event) => {
+    const data = event.target.value;
+    if (data.getUint8(0) === 0x80/*OpCode result=*/) {
+      switch (data.getUint8(1)) {
+
+        case 0x00:
+          if (data.getUint8(2) === 0x01) {
+            // Request accepted, next call the opcode requested in this.state.writeTofittnessMachine
+            const service = this.state.fitnessMachineService;
+            service.getCharacteristic('fitness_machine_control_point').then(characteristic => {
+              characteristic.writeValue(this.state.writeTofittnessMachine).then(() => {
+                this.setState({ writeTofittnessMachine: null });
+              }).catch(error => {
+                console.error("onFitnessMachineControlPointChanged: Error during writing fitness_machine_control_point: ", error);
+              });
+            }
+            ).catch(error => {
+              console.error("onFitnessMachineControlPointChanged: Error during connecting to fitness_machine_control_point: ", error);
+            });
+          }
+          else {
+            console.error("onFitnessMachineControlPointChanged: ", "Request Control failed");
+          }
+          return;
+
+        case 0x01:
+          if (data.getUint8(2) === 0x01) {
+            console.log("Reset executed")
+          }
+          else {
+            console.error("onFitnessMachineControlPointChanged: ", "Reset failed");
+          }
+          return;
+
+        case 0x04:
+          if (data.getUint8(2) === 0x01) {
+            console.log("Resistance is changed")
+          }
+          else {
+            console.error("onFitnessMachineControlPointChanged: ", "Set Target Resistance failed");
+          }
+          return;
+
+        default:
+          console.error("onFitnessMachineControlPointChanged: ", `Opcode ${data.getUint8(1)} is not implemented`)
+      }
+    }
+    console.log("fitness_machine_control_point", data);
+  }
+
+  handleButtonSetResistance = (resistance) => {
+    const level = this.state.supportedResistanceLevel;
+    if (level) {
+      const data = new Uint8Array(2);
+      data.set([0x4, (resistance > level.maximum) ? level.maximum : (resistance < level.minimum) ? level.minimum : Math.round(resistance)], 0);
+      this.setState({ writeTofittnessMachine: data });
+      this.handleFitnessMachineControlRequest();
+    }
+    else {
+      console.error("handleButtonSetResistance Error: Resistance level range is unknown.");
+    }
+  }
+
+  handleButtonReset = () => {
+    const level = this.state.supportedResistanceLevel;
+    if (level) {
+      const data = new Uint8Array(1);
+      data.set([0x1], 0);
+      this.setState({ writeTofittnessMachine: data });
+      this.handleFitnessMachineControlRequest();
+    }
+    else {
+      console.error("handleButtonSetResistance Error: Resistance level range is unknown.");
+    }
   }
 
   handleFitnessMachineFeatureCharacteristic = (characteristic) => {
@@ -435,64 +623,6 @@ class CyclePower extends React.Component {
       });
   }
 
-  handleSupportedResistanceLevelRangeCharacteristic = (characteristic) => {
-    return characteristic.readValue()
-      .then(data => {
-        // https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.supported_resistance_level_range.xml
-        const minimumResistanceLevel = data.getInt16(0, /*littleEndian=*/true);
-        const maximumResistanceLevel = data.getInt16(2, /*littleEndian=*/true);
-        const minimumIncrement = data.getUint16(4, /*littleEndian=*/true);
-        this.setState({ supportedResistanceLevel: { minimum: minimumResistanceLevel, maximum: maximumResistanceLevel, increment: minimumIncrement } });
-      });
-  }
-
-  handleFitnessMachineControlPointCharacteristic = (characteristic) => {
-    return characteristic.startNotifications()
-      .then(char => {
-        characteristic.addEventListener('characteristicvaluechanged',
-          this.onFitnessMachineControlPointChanged);
-      });
-  }
-
-  onFitnessMachineControlPointChanged = (event) => {    
-    const data = event.target.value;
-    if (data.getUint8(0) === 0x80/*OpCode result=*/) {
-      switch (data.getUint8(1)) {
-        case 0x00:
-          if (data.getUint8(2) === 0x01) {
-          // Request accepted, next call the procedure 
-          const service = this.state.fitnessMachineService;
-          service.getCharacteristic('fitness_machine_control_point').then(characteristic => {
-            characteristic.writeValue(this.state.writeTofittnessMachine).then(() => {
-              this.setState({ writeTofittnessMachine: null });
-            }).catch(error => {
-              console.error("onFitnessMachineControlPointChanged: Error during writing fitness_machine_control_point: ", error);
-            });
-          }
-          ).catch(error => {
-            console.error("onFitnessMachineControlPointChanged: Error during connecting to fitness_machine_control_point: ", error);
-          });
-        }
-        else {
-          console.error("onFitnessMachineControlPointChanged: ", "Request Control failed");
-        }
-          return;
-        case 0x04:
-          if (data.getUint8(2) === 0x01) {
-            console.log("Resistance is changed")
-          }
-          else {
-            console.error("onFitnessMachineControlPointChanged: ", "Set Target Resistance failed");
-          }
-          return;
-        default:
-          console.error("onFitnessMachineControlPointChanged: ", `Opcode ${data.getUint8(1)} is not implemented`)
-        }
-    }
-    console.log("fitness_machine_control_point", data);
-  }
-
-
   handleSupportedPowerRangeCharacteristic = (characteristic) => {
     return characteristic.readValue()
       .then(data => {
@@ -504,87 +634,19 @@ class CyclePower extends React.Component {
       });
   }
 
-  handleIndoorBikeDataCharacteristic = (characteristic) => {
-    return characteristic.startNotifications()
-      .then(char => {
-        characteristic.addEventListener('characteristicvaluechanged',
-          this.onIndoorBikeDataChanged);
+  handleSupportedResistanceLevelRangeCharacteristic = (characteristic) => {
+    return characteristic.readValue()
+      .then(data => {
+        // https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.supported_resistance_level_range.xml
+        const minimumResistanceLevel = data.getInt16(0, /*littleEndian=*/true);
+        const maximumResistanceLevel = data.getInt16(2, /*littleEndian=*/true);
+        const minimumIncrement = data.getUint16(4, /*littleEndian=*/true);
+        this.setState({ supportedResistanceLevel: { minimum: minimumResistanceLevel, maximum: maximumResistanceLevel, increment: minimumIncrement } });
       });
   }
 
-  onIndoorBikeDataChanged = (event) => {
-    // https://github.com/oesmith/gatt-xml/blob/master/org.bluetooth.characteristic.indoor_bike_data.xml
-    const data = event.target.value;
-    const flags = data.getUint16(0, /*littleEndian=*/true);
-
-    this.setState({flagsFitsnessMachine : `0b${flags.toString(2).padStart(16, '0')}`});
-    const raw = uint8ArrayToHexString(new Uint8Array(data.buffer.slice(2)).buffer);
-    this.setState({ rawFitnessMachine: raw });
-
-    const fields = [];
-    fields.push(`Speed: (${data.getUint16(2, true)})`);
-    fields.push(`Cadence: (${data.getUint16(4, true)})`);
-    fields.push(` (${data.getUint16(6, true)})`);
-    this.setState({ fieldsFitnessMachine: fields });
-
-    const result = {};
-    let index = 2;
-
-    const moreData = flags & 0x1;
-    // This is a weird flag because if it is zero then instantaneousSpeed is present
-    if (!moreData) {
-      result.instantaneousSpeed = { value: data.getUint16(index, /*littleEndian=*/true) / 100, unit: 'km/h' };
-      index += 2;
-    }
-
-    const averageSpeedPresent = flags & 0x2;
-    if (averageSpeedPresent) {
-      result.averageSpeed = { value: data.getUint16(index, /*littleEndian=*/true) / 100, unit: 'm/s' };
-      index += 2;
-    }
-
-    const instantaneousCadencePresent = flags & 0x4;
-    if (instantaneousCadencePresent) {
-      result.instantaneousCadence = { value: data.getUint16(index, /*littleEndian=*/true) / 20, unit: 'rpm' };
-      index += 2;
-    }
-
-    const averageCadencePresent = flags & 0x8;
-    if (averageCadencePresent) {
-      result.averageCadence = { value: data.getUint16(index, /*littleEndian=*/true) / 20, unit: 'rpm' };
-      index += 2;
-    }
-
-    const totalDistancePresent = flags & 0x10;
-    // This specified as a 24 bit field
-    if (totalDistancePresent) {
-      result.totalDistance = { value: data.getUint32(index, /*littleEndian=*/true) * data.getUint8(index + 2), unit: 'm' };
-      index += 3;
-    }
-
-    const resistanceLevelPresent = flags & 0x20;
-    if (resistanceLevelPresent) {
-      result.resistanceLevel = { value: data.getInt16(index, /*littleEndian=*/true), unit: '%' };
-      index += 2;
-    }
-
-    const instantaneousPowerPresent = flags & 0x40;
-    if (instantaneousPowerPresent) {
-      result.instantaneousPower = { value: data.getInt16(index, /*littleEndian=*/true), unit: 'W' };
-      index += 2;
-    }
-
-    // TODO: remaining fields
-    // Average Power present
-    // Expended Energy present
-    // Heart Rate present
-    // Metabolic Equivalent present
-    // Elapsed Time present
-    // Remaining Time present
-
-    this.setState({ indoorBikeData: result });
-
-  }
+  // ////////////////////////////////////////////////////////////////////
+  // Device Information Service
 
   handleDeviceInformationService = async (service) => {
     service.getCharacteristics().then(async characteristics => {
@@ -624,25 +686,12 @@ class CyclePower extends React.Component {
         }
         //console.log("\tcharacteristic", characteristic.uuid.substring(0, 8), new TextDecoder().decode(data.buffer));
       }
-      this.setState({ deviceInformation: result });
+      this.setState({ deviceInformationService: result });
     });
   }
 
-  handleButtonSetResistance = (resistance) => () => {
-    const service = this.state.fitnessMachineService;
-    service.getCharacteristic('fitness_machine_control_point').then(characteristic => {
-      characteristic.writeValue(new Uint8Array([0x0]/*Request control=*/)).then(() => {
-        const data = new Uint8Array(3);
-        data.set([0x4, 0x0, resistance], 0);  
-        this.setState({ writeTofittnessMachine: data });
-      }).catch(error => {
-        console.error("Error during writing fitness_machine_control_point: ", error);
-      });
-    }
-    ).catch(error => {
-      console.error("Error during connecting to fitness_machine_control_point: ", error);
-    });
-  }
+  // ////////////////////////////////////////////////////////////////////
+  // Render
 
   render() {
     return (
@@ -659,16 +708,16 @@ class CyclePower extends React.Component {
             }
 
             {this.state.cyclingPowerService ?
-            <>
-              <Typography variant="h5" marginTop={3} marginBottom={3} align='center'>
-                Connected to: '{this.state.cyclingPowerService.device.name}'
-              </Typography>
-              <Stack spacing={2} direction="row" >
-                <Button onClick={this.handleButtonSetResistance(1)} variant="contained" style={{width:20}} >1</Button>
-                <Button onClick={this.handleButtonSetResistance(25)} variant="contained" style={{width:20}} >100</Button>
-                <Button onClick={this.handleButtonSetResistance(255)} variant="contained" style={{width:20}} >255</Button>
-              </Stack>
-            </>
+              <>
+                <Typography variant="h5" marginTop={3} marginBottom={3} align='center'>
+                  Connected to: '{this.state.cyclingPowerService.device.name}'
+                </Typography>
+                <Stack spacing={2} direction="row" >
+                  <Button onClick={() => this.handleButtonSetResistance(0)} variant="contained" style={{ width: 20 }} >0</Button>
+                  <Button onClick={() => this.handleButtonSetResistance(100)} variant="contained" style={{ width: 20 }} >100</Button>
+                  <Button onClick={() => this.handleButtonReset(255)} variant="contained" style={{ width: 20 }} >Reset</Button>
+                </Stack>
+              </>
               :
               <Button variant="contained" onClick={this.buttonConnectDevice} >
                 Connect
@@ -697,13 +746,13 @@ class CyclePower extends React.Component {
             {this.state.powerMeasurement && this.state.indoorBikeData &&
               <Stack spacing={2} direction="row" >
 
-                  <Typography variant="h3" marginTop={3} marginBottom={3} align='center'>
-                    Distance: {this.state.powerMeasurement.distance.value.toFixed(1)} {this.state.powerMeasurement.distance.unit}
-                  </Typography>
+                <Typography variant="h3" marginTop={3} marginBottom={3} align='center'>
+                  Distance: {this.state.powerMeasurement.distance.value.toFixed(1)} {this.state.powerMeasurement.distance.unit}
+                </Typography>
 
-                  <Typography variant="h3" marginTop={3} marginBottom={3} align='center'>
-                    Speed: {this.state.indoorBikeData.instantaneousSpeed.value.toFixed(1)} {this.state.indoorBikeData.instantaneousSpeed.unit}
-                  </Typography>
+                <Typography variant="h3" marginTop={3} marginBottom={3} align='center'>
+                  Speed: {this.state.indoorBikeData.instantaneousSpeed.value.toFixed(1)} {this.state.indoorBikeData.instantaneousSpeed.unit}
+                </Typography>
 
               </Stack>
             }
@@ -711,42 +760,42 @@ class CyclePower extends React.Component {
             {this.state.showTechnicalData &&
               <>
                 {this.state.fieldsCyclingPower && this.state.fieldsCyclingPower &&
-                <>
-                  <Typography variant="h2" marginTop={3} marginBottom={3} align='center'>
-                    {this.state.rawCyclingPower}
-                  </Typography>
+                  <>
+                    <Typography variant="h2" marginTop={3} marginBottom={3} align='center'>
+                      {this.state.rawCyclingPower}
+                    </Typography>
 
-                  <List dense={true}>
-                  {this.state.fieldsCyclingPower.map((item, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primaryTypographyProps={{ variant: 'h3' }}
-                        primary={item}
-                      />
-                    </ListItem>
-                  ))}
-                  </List>
+                    <List dense={true}>
+                      {this.state.fieldsCyclingPower.map((item, index) => (
+                        <ListItem key={index}>
+                          <ListItemText primaryTypographyProps={{ variant: 'h3' }}
+                            primary={item}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
                   </>
                 }
 
                 {this.state.fieldsFitnessMachine && this.state.fieldsFitnessMachine &&
-                <>
-                  <Typography variant="h2" marginTop={3} marginBottom={3} align='center'>
-                    flags: {this.state.flagsFitsnessMachine}
-                  </Typography>
+                  <>
+                    <Typography variant="h2" marginTop={3} marginBottom={3} align='center'>
+                      flags: {this.state.flagsFitsnessMachine}
+                    </Typography>
 
-                  <Typography variant="h2" marginTop={3} marginBottom={3} align='center'>
-                    raw data: {this.state.rawFitnessMachine}
-                  </Typography>
+                    <Typography variant="h2" marginTop={3} marginBottom={3} align='center'>
+                      raw data: {this.state.rawFitnessMachine}
+                    </Typography>
 
-                  <List dense={true}>
-                  {this.state.fieldsFitnessMachine.map((item, index) => (
-                    <ListItem key={index}>
-                      <ListItemText primaryTypographyProps={{ variant: 'h3' }}
-                        primary={item}
-                      />
-                    </ListItem>
-                  ))}
-                  </List>
+                    <List dense={true}>
+                      {this.state.fieldsFitnessMachine.map((item, index) => (
+                        <ListItem key={index}>
+                          <ListItemText primaryTypographyProps={{ variant: 'h3' }}
+                            primary={item}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
                   </>
                 }
 
@@ -756,9 +805,9 @@ class CyclePower extends React.Component {
                   </Typography>
                 }
 
-                {this.state.deviceInformation &&
+                {this.state.deviceInformationService &&
                   <Typography variant="body" marginTop={3} marginBottom={3} align='center'>
-                    Device Information: {JSON.stringify(this.state.deviceInformation)}
+                    Device Information: {JSON.stringify(this.state.deviceInformationService)}
                   </Typography>
                 }
 

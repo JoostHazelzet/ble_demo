@@ -72,6 +72,9 @@ class Cadence extends React.Component {
     this.setState({ cyclingSpeedAndCadenceService: null });
   }
 
+  // ////////////////////////////////////////////////////////////////////
+  // cycling Speed and Cadence Service
+
   handleSensorLocationCharacteristic = (characteristic) => {
     if (characteristic === null) {
       console.log("Unknown sensor location.");
@@ -209,6 +212,9 @@ class Cadence extends React.Component {
 
     this.setState({ cscMeasurement: result });
   }
+
+  // ////////////////////////////////////////////////////////////////////
+  // Render
 
   render() {
     return (
